@@ -667,4 +667,59 @@ export class RaceSolver {
 		this.activeCurrentSpeedSkills.forEach(callDeactivateHook);
 		this.activeAccelSkills.forEach(callDeactivateHook);
 	}
+
+	initRushedState() {
+        // Formula: RushedChance = (6.5 / log10(0.1 * WizStat + 1))²%
+        const wisdomStat = this.horse.wisdom;
+        const rushedChance = Math.pow(6.5 / Math.log10(0.1 * wisdomStat + 1), 2) / 100;
+        
+        // Check if horse has 自制心 (Self-Control) skill - ID 202161
+        // This reduces rushed chance by flat 3%
+        const hasSelfControl = this.pendingSkills.some(s => s.skillId === '202161');
+        const finalRushedChance = Math.max(0, rushedChance - (hasSelfControl ? 0.03 : 0));
+        
+        // Roll for rushed state
+        if (this.rng.random() < finalRushedChance) {
+            // Determine which section (2-9) the rushed state activates in
+            this.rushedSection = 2 + this.rng.uniform(8);  // Random int from 2 to 9
+            this.rushedEnterPosition = this.sectionLength * this.rushedSection;
+        }
+    }
+    
+    updateRushedState() {
+        // Check if we should enter rushed state
+        if (this.rushedSection >= 0 && !this.isRushed && this.pos >= this.rushedEnterPosition) {
+            this.isRushed = true;
+            this.rushedTimer.t = 0;
+            this.rushedActivations.push([this.pos, -1]);  // Start tracking, end will be filled later
+        }
+        
+        // Update rushed state if active
+        if (this.isRushed) {
+            // Check for recovery every 3 seconds
+            if (this.rushedTimer.t > 0 && Math.floor(this.rushedTimer.t / 3) > Math.floor((this.rushedTimer.t - 0.017) / 3)) {
+                // 55% chance to snap out of it
+                if (this.rng.random() < 0.55) {
+                    this.endRushedState();
+                    return;
+                }
+            }
+            
+            // Force end after max duration
+            if (this.rushedTimer.t >= this.rushedMaxDuration) {
+                this.endRushedState();
+            }
+        }
+    }
+    
+    endRushedState() {
+        this.isRushed = false;
+        // Mark the end position for UI display
+        if (this.rushedActivations.length > 0) {
+            const lastIdx = this.rushedActivations.length - 1;
+            if (this.rushedActivations[lastIdx][1] === -1) {
+                this.rushedActivations[lastIdx][1] = this.pos;
+            }
+        }
+    }
 }
