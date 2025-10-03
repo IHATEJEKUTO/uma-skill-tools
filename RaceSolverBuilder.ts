@@ -399,6 +399,7 @@ export class RaceSolverBuilder {
 	_extraSkillHooks: ((skilldata: SkillData[], horse: HorseParameters, course: CourseData) => void)[]
 	_onSkillActivate: (state: RaceSolver, skillId: string) => void
 	_onSkillDeactivate: (state: RaceSolver, skillId: string) => void
+	_disableRushed: boolean
 
 	constructor(readonly nsamples: number) {
 		this._course = null;
@@ -421,6 +422,7 @@ export class RaceSolverBuilder {
 		this._extraSkillHooks = [];
 		this._onSkillActivate = null;
 		this._onSkillDeactivate = null;
+		this._disableRushed = false;
 	}
 
 	seed(seed: number) {
@@ -612,6 +614,29 @@ export class RaceSolverBuilder {
 		return this;
 	}
 
+	/**
+	 * Adds a skill that will be forced to activate at a specific distance on the track.
+	 * This overrides the skill's normal activation conditions and sample policy.
+	 * @param skillId The skill ID to add
+	 * @param position The distance (in meters) where the skill should activate
+	 * @param perspective Whether this skill is for Self or Other (default: Self)
+	 * @returns this builder for chaining
+	 */
+	addSkillAtPosition(skillId: string, position: number, perspective: Perspective = Perspective.Self) {
+		const { createFixedPositionPolicy } = require('./ActivationSamplePolicy');
+		return this.addSkill(skillId, perspective, createFixedPositionPolicy(position));
+	}
+	
+	/**
+	 * Disables the rushed status mechanic for this horse.
+	 * When disabled, the horse will never enter the rushed state regardless of wisdom.
+	 * @returns this builder for chaining
+	 */
+	disableRushed() {
+		this._disableRushed = true;
+		return this;
+	}
+
 	onSkillActivate(cb: (state: RaceSolver, skillId: string) => void) {
 		this._onSkillActivate = cb;
 		return this;
@@ -634,6 +659,7 @@ export class RaceSolverBuilder {
 		clone._skills = this._skills.slice();
 		clone._onSkillActivate = this._onSkillActivate;
 		clone._onSkillDeactivate = this._onSkillDeactivate;
+		clone._disableRushed = this._disableRushed;
 
 		// NB. GOTCHA: if asitame is enabled, it closes over *our* horse and mood data, and not the clone's
 		// this is assumed to be fine, since fork() is intended to be used after everything is added except skills,
@@ -695,7 +721,8 @@ export class RaceSolverBuilder {
 				hp: new GameHpPolicy(this._course, this._raceParams.groundCondition, new Rule30CARng(solverRng.int32())),
 				rng: solverRng,
 				onSkillActivate: this._onSkillActivate,
-				onSkillDeactivate: this._onSkillDeactivate
+				onSkillDeactivate: this._onSkillDeactivate,
+				disableRushed: this._disableRushed
 			});
 
 			if (redo) {

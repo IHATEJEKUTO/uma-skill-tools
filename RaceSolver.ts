@@ -232,6 +232,15 @@ export class RaceSolver {
 	posKeepEffectStart: number
 	posKeepEffectExitDistance: number
 	updatePositionKeep: () => void
+	
+	// Rushed state
+	isRushed: boolean
+	hasBeenRushed: boolean  // Track if horse has already been rushed this race (can only happen once)
+	rushedSection: number  // Which section (2-9) the rushed state activates in
+	rushedEnterPosition: number  // Position where rushed state should activate
+	rushedTimer: Timer  // Tracks time in rushed state
+	rushedMaxDuration: number  // Maximum duration (12s + extensions)
+	rushedActivations: Array<[number, number]>  // Track [start, end] positions for UI
 
 	modifiers: {
 		targetSpeed: CompensatedAccumulator
@@ -249,7 +258,8 @@ export class RaceSolver {
 		hp: HpPolicy,
 		pacer?: RaceSolver,
 		onSkillActivate?: (s: RaceSolver, skillId: string) => void,
-		onSkillDeactivate?: (s: RaceSolver, skillId: string) => void
+		onSkillDeactivate?: (s: RaceSolver, skillId: string) => void,
+		disableRushed?: boolean
 	}) {
 		// clone since green skills may modify the stat values
 		this.horse = Object.assign({}, params.horse);
@@ -297,6 +307,17 @@ export class RaceSolver {
 		} else {
 			this.updatePositionKeep = this.updatePositionKeepNonNige;
 		}
+		
+		// Initialize rushed state
+		this.isRushed = false;
+		this.hasBeenRushed = false;
+		this.rushedSection = -1;
+		this.rushedEnterPosition = -1;
+		this.rushedTimer = this.getNewTimer();
+		this.rushedMaxDuration = 12.0;
+		this.rushedActivations = [];
+		// Calculate rushed chance and determine if/when it activates
+		this.initRushedState(params.disableRushed || false);
 
 		this.modifiers = {
 			targetSpeed: new CompensatedAccumulator(0.0),
@@ -368,6 +389,68 @@ export class RaceSolver {
 		this.timers.push(tm);
 		return tm;
 	}
+	
+	initRushedState(disabled: boolean) {
+		// Skip rushed calculation if disabled
+		if (disabled) {
+			return;
+		}
+		
+		// Calculate rushed chance based on wisdom
+		// Formula: RushedChance = (6.5 / log10(0.1 * WizStat + 1))²%
+		const wisdomStat = this.horse.wisdom;
+		const rushedChance = Math.pow(6.5 / Math.log10(0.1 * wisdomStat + 1), 2) / 100;
+		
+		// Check if horse has 自制心 (Self-Control) skill - ID 202161
+		// This reduces rushed chance by flat 3%
+		const hasSelfControl = this.pendingSkills.some(s => s.skillId === '202161');
+		const finalRushedChance = Math.max(0, rushedChance - (hasSelfControl ? 0.03 : 0));
+		
+		// Roll for rushed state
+		if (this.rng.random() < finalRushedChance) {
+			// Determine which section (2-9) the rushed state activates in
+			this.rushedSection = 2 + this.rng.uniform(8);  // Random int from 2 to 9
+			this.rushedEnterPosition = this.sectionLength * this.rushedSection;
+		}
+	}
+	
+	updateRushedState() {
+		// Check if we should enter rushed state (can only happen once per race)
+		if (this.rushedSection >= 0 && !this.isRushed && !this.hasBeenRushed && this.pos >= this.rushedEnterPosition) {
+			this.isRushed = true;
+			this.hasBeenRushed = true;  // Mark that this horse has been rushed
+			this.rushedTimer.t = 0;
+			this.rushedActivations.push([this.pos, -1]);  // Start tracking, end will be filled later
+		}
+		
+		// Update rushed state if active
+		if (this.isRushed) {
+			// Check for recovery every 3 seconds
+			if (this.rushedTimer.t > 0 && Math.floor(this.rushedTimer.t / 3) > Math.floor((this.rushedTimer.t - 0.017) / 3)) {
+				// 55% chance to snap out of it
+				if (this.rng.random() < 0.55) {
+					this.endRushedState();
+					return;
+				}
+			}
+			
+			// Force end after max duration
+			if (this.rushedTimer.t >= this.rushedMaxDuration) {
+				this.endRushedState();
+			}
+		}
+	}
+	
+	endRushedState() {
+		this.isRushed = false;
+		// Mark the end position for UI display
+		if (this.rushedActivations.length > 0) {
+			const lastIdx = this.rushedActivations.length - 1;
+			if (this.rushedActivations[lastIdx][1] === -1) {
+				this.rushedActivations[lastIdx][1] = this.pos;
+			}
+		}
+	}
 
 	getMaxSpeed() {
 		if (this.startDash) {
@@ -417,6 +500,7 @@ export class RaceSolver {
 		this.timers.forEach(tm => tm.t += dt);
 		this.updateHills();
 		this.updatePhase();
+		this.updateRushedState();
 		this.processSkillActivations();
 		this.updatePositionKeep();
 		this.updateLastSpurtState();
