@@ -19,6 +19,7 @@ export interface HorseParameters {
 export namespace StrategyHelpers {
 	export function assertIsStrategy(strategy: number): asserts strategy is Strategy {
 		assert(Strategy.hasOwnProperty(strategy));
+		//why
 	}
 
 	export function strategyMatches(s1: Strategy, s2: Strategy) {

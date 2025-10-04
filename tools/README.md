@@ -44,6 +44,33 @@ Takes two uma definition files and runs simulations with each of them to compare
 
 This is intended for comparisons that can't be made with gain.ts, for example comparing ums with different stats or comparing completely different sets of skills. Run `ts-node compare.ts --help` for options, but they're mostly the same as gain.ts.
 
+# Forcing Skills to Activate at Specific Positions
+
+You can force skills to activate at exact track positions (e.g., 2000m) using the `addSkillAtPosition()` method in `RaceSolverBuilder`:
+
+```typescript
+import { RaceSolverBuilder } from '../RaceSolverBuilder';
+import { createFixedPositionPolicy } from '../ActivationSamplePolicy';
+
+const builder = new RaceSolverBuilder(10)
+    .horse(myHorse)
+    .course(10105);
+
+// Force skill to activate at exactly 2000m
+builder.addSkillAtPosition('200041', 2000);
+
+// Or use the lower-level API with addSkill:
+builder.addSkill('200051', Perspective.Self, createFixedPositionPolicy(1500));
+```
+
+This is useful for:
+- Testing skill effects at specific race points
+- Reproducing exact race scenarios
+- Analyzing the impact of skill timing
+- Debugging skill interactions
+
+See `fixed-skill-example.ts` for a complete working example.
+
 # plot.py
 
 Takes the output of dump.ts and plots it alongside the course features. Requires matplotlib to be installed.

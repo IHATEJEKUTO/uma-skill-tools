@@ -56,16 +56,19 @@ export class GameHpPolicy {
 		this.subparAcceptChance = Math.round((15.0 + 0.05 * horse.wisdom) * 1000);
 	}
 
-	getStatusModifier(state: {isPaceDown: boolean}) {
+	getStatusModifier(state: {isPaceDown: boolean, isRushed?: boolean}) {
 		let modifier = 1.0;
 		if (state.isPaceDown) {
 			modifier *= 0.6;
+		}
+		if (state.isRushed) {
+			modifier *= 1.6;
 		}
 		// TODO downhill mode
 		return modifier;
 	}
 
-	hpPerSecond(state: {phase: Phase, isPaceDown: boolean}, velocity: number) {
+	hpPerSecond(state: {phase: Phase, isPaceDown: boolean, isRushed?: boolean}, velocity: number) {
 		const gutsModifier = state.phase >= 2 ? this.gutsModifier : 1.0;
 		return 20.0 * Math.pow(velocity - this.baseSpeed + 12.0, 2) / 144.0 *
 			this.getStatusModifier(state) * this.groundModifier * gutsModifier;
