@@ -5,6 +5,7 @@ import { CourseData, CourseHelpers, Phase } from './CourseData';
 import { Region } from './Region';
 import { PRNG, Rule30CARng } from './Random';
 import type { HpPolicy } from './HpPolicy';
+import { table_getRightHeaderGroups, table_getRightVisibleLeafColumns } from './uma-tools/vendor/table-core';
 
 declare var CC_GLOBAL: boolean
 
@@ -241,7 +242,17 @@ export class RaceSolver {
 	rushedTimer: Timer  // Tracks time in rushed state
 	rushedMaxDuration: number  // Maximum duration (12s + extensions)
 	rushedActivations: Array<[number, number]>  // Track [start, end] positions for UI
-
+	
+	
+	//Front Runner 
+	isFrontRunnerSpeedUpMode: boolean
+	FrontRunnerSpeedUpModifier: number
+	FrontRunnerSpeedUpExitDistance: number
+	FrontRunnerOverTakeExistDistance: number
+	FrontRunnerSpeedUpTimer: Timer
+	FrontRunnerOverTakeMode: boolean
+	
+	
 	modifiers: {
 		targetSpeed: CompensatedAccumulator
 		currentSpeed: CompensatedAccumulator
@@ -303,7 +314,8 @@ export class RaceSolver {
 		this.posKeepEnd = this.sectionLength * 5.0;
 		this.posKeepSpeedCoef = 1.0;
 		if (StrategyHelpers.strategyMatches(this.horse.strategy, Strategy.Nige) || this.pacer == null) {
-			this.updatePositionKeep = noop as any;
+			this.updatePositionKeep = this.updatePositionKeepNige;
+			//this.updatePositionKeep = noop as any; fuck that shit!!!
 		} else {
 			this.updatePositionKeep = this.updatePositionKeepNonNige;
 		}
@@ -318,6 +330,8 @@ export class RaceSolver {
 		this.rushedActivations = [];
 		// Calculate rushed chance and determine if/when it activates
 		this.initRushedState(params.disableRushed || false);
+		
+
 
 		this.modifiers = {
 			targetSpeed: new CompensatedAccumulator(0.0),
@@ -421,6 +435,7 @@ export class RaceSolver {
 			this.hasBeenRushed = true;  // Mark that this horse has been rushed
 			this.rushedTimer.t = 0;
 			this.rushedActivations.push([this.pos, -1]);  // Start tracking, end will be filled later
+			console.log(this.rushedActivations)
 		}
 		
 		// Update rushed state if active
@@ -451,6 +466,8 @@ export class RaceSolver {
 			}
 		}
 	}
+
+	initFrontRunnerSpeedUpMode(){}
 
 	getMaxSpeed() {
 		if (this.startDash) {
@@ -545,6 +562,55 @@ export class RaceSolver {
 			this.posKeepEffectExitDistance = min + this.paceEffectRng.random() * (max - min);
 			this.posKeepSpeedCoef = this.phase == 1 ? 0.945 : 0.915;
 		}
+	}
+
+	updatePositionKeepNige(){
+		//assign exit distance and speedup mode chance according to the race docs
+		const secondPlaceUmaPos = this.pacer ? this.pacer.pos : this.pos - 5.0 
+		const isFirstPlace = (this.pacer == null || this.pos > this.pacer.pos);
+		this.FrontRunnerSpeedUpExitDistance = StrategyHelpers.strategyMatches(this.horse.strategy, Strategy.Oonige) ? 12.5 : 4.5;
+		//logic for frontRunner SpeedUp mode
+		//temp function ONLY works if the other uma is literally a pacemaker
+		if(this.isFrontRunnerSpeedUpMode){
+			
+			
+			if(this.pos - secondPlaceUmaPos >= this.FrontRunnerSpeedUpExitDistance){
+				this.isFrontRunnerSpeedUpMode = false;
+				this.posKeepSpeedCoef = 1.0;
+				this.FrontRunnerSpeedUpTimer.t = -5.0; 
+				
+			}
+
+			
+		} else if(this.FrontRunnerSpeedUpTimer.t >= 0){
+			
+			if (isFirstPlace && this.pos - secondPlaceUmaPos < this.FrontRunnerSpeedUpExitDistance && this.rollthisSHIT()){
+				this.isFrontRunnerSpeedUpMode = true;
+				this.posKeepSpeedCoef = 1.04;
+			}
+		}
+
+
+		//logic for overtake mode (HELLA INNACURATE BECAUSE WE CANT TRACK WHERE EACH UMA IS!!!)
+		if(this.FrontRunnerOverTakeMode){
+			const secondPlaceStratPos = this.pos - 3.0 
+			if(this.pos - (this.pos - 3.0) >= this.FrontRunnerOverTakeExistDistance){
+				this.FrontRunnerOverTakeMode = true;
+				this.posKeepSpeedCoef = 1.05;
+			}
+		}
+
+		
+		//conclusion - this isn't even a race sim.... 
+	}
+	
+
+	//helper function I made for no reason but it has a cool name
+	//WIT CHECK!!!
+	rollthisSHIT(): boolean {
+		const witCheck = 20 * Math.log10(0.1 * this.horse.wisdom)
+		return (this.rng.random() * 100) < witCheck
+	
 	}
 
 	updateLastSpurtState() {
@@ -740,6 +806,8 @@ export class RaceSolver {
 			// instead, flag the skill later to be removed in processSkillActivations (either later in the loop that called us, or
 			// the next time processSkillActivations is called).
 			this.pendingRemoval.add(s.skillId);
+
+			//thank you
 		}
 	}
 
