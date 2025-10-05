@@ -79,6 +79,10 @@ cd /Users/anthony/Documents/uma-skill-tools/uma-tools/umalator-global
 node build.mjs
 ```
 
+# THIS SHIT DONT EVEN WORK BRUH
+
+
+
 ### Stop Server
 ```bash
 pkill -f "node build.mjs"

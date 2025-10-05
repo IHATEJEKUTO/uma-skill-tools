@@ -90,3 +90,4 @@ function getDefaultSkillPosition(skillId: string, course: any): number {
 
 
 
+
